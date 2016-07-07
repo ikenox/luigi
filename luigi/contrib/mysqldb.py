@@ -17,15 +17,16 @@
 
 import logging
 
+
 import luigi
 
 logger = logging.getLogger('luigi-interface')
 
 try:
-    import mysql.connector
-    from mysql.connector import errorcode
+    import pymysql
+    from pymysql.constants import ER
 except ImportError as e:
-    logger.warning("Loading MySQL module without the python package mysql-connector-python. \
+    logger.warning("Loading MySQL module without the python package pymysql. \
         This will crash at runtime if MySQL functionality is used.")
 
 
@@ -75,7 +76,7 @@ class MySqlTarget(luigi.Target):
 
         if connection is None:
             connection = self.connect()
-            connection.autocommit = True  # if connection created here, we commit it here
+            connection.autocommit_mode = True  # if connection created here, we commit it here
 
         connection.cursor().execute(
             """INSERT INTO {marker_table} (update_id, target_table)
@@ -91,24 +92,24 @@ class MySqlTarget(luigi.Target):
     def exists(self, connection=None):
         if connection is None:
             connection = self.connect()
-            connection.autocommit = True
+            connection.autocommit_mode = True
         cursor = connection.cursor()
         try:
             cursor.execute("""SELECT 1 FROM {marker_table}
                 WHERE update_id = %s
                 LIMIT 1""".format(marker_table=self.marker_table),
-                           (self.update_id,)
+                           (self.update_id)
                            )
             row = cursor.fetchone()
-        except mysql.connector.Error as e:
-            if e.errno == errorcode.ER_NO_SUCH_TABLE:
+        except pymysql.err.MySQLError as e:
+            if e.args.errno == ER.NO_SUCH_TABLE:
                 row = None
             else:
                 raise
         return row is not None
 
     def connect(self, autocommit=False):
-        connection = mysql.connector.connect(user=self.user,
+        connection = pymysql.connect(user=self.user,
                                              password=self.password,
                                              host=self.host,
                                              port=self.port,
@@ -137,8 +138,8 @@ class MySqlTarget(luigi.Target):
                 """
                 .format(marker_table=self.marker_table)
             )
-        except mysql.connector.Error as e:
-            if e.errno == errorcode.ER_TABLE_EXISTS_ERROR:
+        except pymysql.err.MySQLError as e:
+            if e.args.errno == ER.TABLE_EXISTS_ERROR:
                 pass
             else:
                 raise
